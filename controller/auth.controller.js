@@ -133,7 +133,7 @@ export const login = async (req, res) => {
 
 export const forgotPassword = async (req, res) => {
   const { email } = req.body;
-  console.log(email,"EMAIL")
+  console.log(email, "EMAIL");
   try {
     if (!email) {
       return res
@@ -150,7 +150,7 @@ export const forgotPassword = async (req, res) => {
     user.resetPasswordToken = resetToken;
     const resetPasswordExpiresAt = Date.now() + 1 * 60 * 60 * 1000;
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpiresAt = resetPasswordExpiresAt
+    user.resetPasswordExpiresAt = resetPasswordExpiresAt;
 
     await user.save();
 
@@ -161,6 +161,33 @@ export const forgotPassword = async (req, res) => {
     return res
       .status(200)
       .json({ success: true, message: "Password reset email sent" });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpiresAt: { $gt: Date.now() },
+    });
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired reset token" });
+    }
+    const hashPassword = await bcryptjs.hash(password, 10);
+    user.password = hashPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpiresAt = undefined;
+    await user.save();
+    await sendPasswordResetEmail(user.email, "Password reset successfully");
+    return res
+      .status(200)
+      .json({ success: true, message: "Password reset successfully" });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
