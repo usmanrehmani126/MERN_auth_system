@@ -1,8 +1,13 @@
 import bcryptjs from "bcrypt";
+import crypto from "crypto";
 
 import { User } from "../models/user.model.js";
 import { generateTokenAndSetCookie } from "../utlis/generateTokenAndSetCookie.js";
-import { sendVerificationEmail, sendWelcomeEmail } from "../mailtrap/emails.js";
+import {
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+  sendWelcomeEmail,
+} from "../mailtrap/emails.js";
 
 export const register = async (req, res) => {
   const { email, password, name } = req.body;
@@ -62,12 +67,10 @@ export const verifyEmail = async (req, res) => {
       verificationTokenExpiresAt: { $gt: Date.now() },
     });
     if (!user) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid or expired verification token",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification token",
+      });
     }
     user.isVerified = true;
     user.verificationToken = undefined;
@@ -82,40 +85,83 @@ export const verifyEmail = async (req, res) => {
   }
 };
 
-export const logout=async(_,res)=>{
+export const logout = async (_, res) => {
   try {
     res.clearCookie("token");
-    return res.status(200).json({ success: true, message: "User logged out successfully" });
+    return res
+      .status(200)
+      .json({ success: true, message: "User logged out successfully" });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
-}
+};
 
-export const login=async(req,res)=>{
-  const {email,password}=req.body;
+export const login = async (req, res) => {
+  const { email, password } = req.body;
   try {
     if (!email || !password) {
       return res
         .status(400)
         .json({ success: false, message: "All fields are required" });
     }
-    const user=await User.findOne({email});
+    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ success: false, message: "User not found" });
+      return res
+        .status(400)
+        .json({ success: false, message: "User not found" });
     }
-    const isPasswordValid=await bcryptjs.compare(password,user.password);
+    const isPasswordValid = await bcryptjs.compare(password, user.password);
     if (!isPasswordValid) {
-      return res.status(400).json({ success: false, message: "Invalid password" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid password" });
     }
     if (!user.isVerified) {
-      return res.status(400).json({ success: false, message: "Email not verified" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Email not verified" });
     }
-    generateTokenAndSetCookie(res,user._id);
-    
-    user.lastLogin=Date.now();
+    generateTokenAndSetCookie(res, user._id);
+
+    user.lastLogin = Date.now();
     await user.save();
-    return res.status(200).json({ success: true, message: "User logged in successfully" });
+    return res
+      .status(200)
+      .json({ success: true, message: "User logged in successfully" });
+  } catch (error) {}
+};
+
+export const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  console.log(email,"EMAIL")
+  try {
+    if (!email) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required" });
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User not found" });
+    }
+    const resetToken = crypto.randomBytes(20).toString("hex");
+    user.resetPasswordToken = resetToken;
+    const resetPasswordExpiresAt = Date.now() + 1 * 60 * 60 * 1000;
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpiresAt = resetPasswordExpiresAt
+
+    await user.save();
+
+    await sendPasswordResetEmail(
+      user.email,
+      `${process.env.FRONTEND_DOMAIN}/reset-password/${resetToken}`
+    );
+    return res
+      .status(200)
+      .json({ success: true, message: "Password reset email sent" });
   } catch (error) {
-    
+    return res.status(400).json({ success: false, message: error.message });
   }
-}
+};
