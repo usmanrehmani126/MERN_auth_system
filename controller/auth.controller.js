@@ -81,3 +81,41 @@ export const verifyEmail = async (req, res) => {
     return res.status(400).json({ success: false, message: error.message });
   }
 };
+
+export const logout=async(_,res)=>{
+  try {
+    res.clearCookie("token");
+    return res.status(200).json({ success: true, message: "User logged out successfully" });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+}
+
+export const login=async(req,res)=>{
+  const {email,password}=req.body;
+  try {
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required" });
+    }
+    const user=await User.findOne({email});
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+    const isPasswordValid=await bcryptjs.compare(password,user.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ success: false, message: "Invalid password" });
+    }
+    if (!user.isVerified) {
+      return res.status(400).json({ success: false, message: "Email not verified" });
+    }
+    generateTokenAndSetCookie(res,user._id);
+    
+    user.lastLogin=Date.now();
+    await user.save();
+    return res.status(200).json({ success: true, message: "User logged in successfully" });
+  } catch (error) {
+    
+  }
+}
