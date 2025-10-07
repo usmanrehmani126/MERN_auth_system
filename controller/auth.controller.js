@@ -2,7 +2,7 @@ import bcryptjs from "bcrypt";
 
 import { User } from "../models/user.model.js";
 import { generateTokenAndSetCookie } from "../utlis/generateTokenAndSetCookie.js";
-import { sendVerificationEmail } from "../mailtrap/emails.js";
+import { sendVerificationEmail, sendWelcomeEmail } from "../mailtrap/emails.js";
 
 export const register = async (req, res) => {
   const { email, password, name } = req.body;
@@ -16,12 +16,10 @@ export const register = async (req, res) => {
 
     const isEmailExists = await User.findOne({ email: email });
     if (isEmailExists) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "User with this email already exists",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "User with this email already exists",
+      });
     }
 
     const hashPassword = await bcryptjs.hash(password, 10);
@@ -39,17 +37,47 @@ export const register = async (req, res) => {
     });
 
     await newUser.save();
-    const token=generateTokenAndSetCookie(res, newUser._id);
+    const token = generateTokenAndSetCookie(res, newUser._id);
     await sendVerificationEmail(newUser.email, verificationToken);
-    return res
-      .status(201)
-      .json({ success: true, message: "User registered successfully" ,user:{
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: {
         ...newUser._doc,
         token,
-        password:undefined
-      }});
+        password: undefined,
+      },
+    });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
 };
 
+export const verifyEmail = async (req, res) => {
+  const { code } = req.body;
+
+  try {
+    const user = await User.findOne({
+      verificationToken: code,
+      verificationTokenExpiresAt: { $gt: Date.now() },
+    });
+    if (!user) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid or expired verification token",
+        });
+    }
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpiresAt = undefined;
+    await user.save();
+    await sendWelcomeEmail(user.email, user.name);
+    return res
+      .status(200)
+      .json({ success: true, message: "Email verified successfully" });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
